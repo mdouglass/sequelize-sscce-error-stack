@@ -1,10 +1,17 @@
-import { DataTypes, Model } from 'sequelize';
-import { createSequelize6Instance } from '../setup/create-sequelize-instance';
-import { expect } from 'chai';
-import sinon from 'sinon';
+import { DataTypes, Model } from "sequelize";
+import { createSequelize6Instance } from "../setup/create-sequelize-instance";
+import { expect } from "chai";
+import sinon from "sinon";
 
 // if your issue is dialect specific, remove the dialects you don't need to test on.
-export const testingOnDialects = new Set(['mssql', 'sqlite', 'mysql', 'mariadb', 'postgres', 'postgres-native']);
+export const testingOnDialects = new Set([
+  "mssql",
+  "sqlite",
+  "mysql",
+  "mariadb",
+  "postgres",
+  "postgres-native",
+]);
 
 // You can delete this file if you don't want your SSCCE to be tested against Sequelize 6
 
@@ -21,21 +28,23 @@ export async function run() {
     },
   });
 
-  class Foo extends Model {}
+  // demonstrate that stack normally has the error message in it
+  try {
+    throw new Error('hello world')
+  } catch (error) {
+    const e = error as Error
+    expect(e.message).to.equal('hello world')
+    expect(e.stack?.split('\n')[0]).to.equal('Error: hello world')
+  }
 
-  Foo.init({
-    name: DataTypes.TEXT,
-  }, {
-    sequelize,
-    modelName: 'Foo',
-  });
-
-  // You can use sinon and chai assertions directly in your SSCCE.
-  const spy = sinon.spy();
-  sequelize.afterBulkSync(() => spy());
-  await sequelize.sync({ force: true });
-  expect(spy).to.have.been.called;
-
-  console.log(await Foo.create({ name: 'TS foo' }));
-  expect(await Foo.count()).to.equal(1);
+  // intentionally cause a deadlock error (really anything that throws DatabaseError)
+  try {
+    await sequelize.transaction(async (txnOuter) => {
+      await sequelize.transaction(async (txnInner) => {});
+    });
+  } catch (error) {
+    const e = error as Error
+    expect(e.message).to.equal('SQLITE_ERROR: cannot start a transaction within a transaction')
+    expect(e.stack?.split('\n')[0]).to.equal('SequelizeDatbaseError: SQLITE_ERROR: cannot start a transaction within a transaction')
+  }
 }
